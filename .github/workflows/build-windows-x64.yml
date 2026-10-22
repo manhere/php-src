@@ -37,12 +37,16 @@ jobs:
           $sdk = Join-Path 'C:\build-cache' 'sdk'
           if (-not (Test-Path $sdk)) {
             git clone --branch php-sdk-2.2.0 --depth 1 https://github.com/php/php-sdk-binary-tools.git $sdk
-            # SDK 2.2.0 still points to windows.php.net which now 302-redirects to
-            # downloads.php.net/~windows (official migration, same change as SDK >= 2.3 master)
+            # SDK 2.2.0 fixes for the deps server migration (same as SDK >= 2.3 master):
+            # 1) host/base: windows.php.net now 302-redirects to downloads.php.net/~windows
+            # 2) new server's directory listing uses relative hrefs, SDK regex requires a
+            #    leading slash -> make it optional so both listing formats parse
             $cfg = Join-Path $sdk 'lib\php\libsdk\SDK\Config.php'
-            (Get-Content $cfg -Raw) `
-              -replace "windows\.php\.net", "downloads.php.net" `
-              -replace "/downloads/php-sdk/deps", "/~windows/php-sdk/deps" | Set-Content $cfg
+            $c = Get-Content $cfg -Raw
+            $c = $c.Replace('windows.php.net', 'downloads.php.net')
+            $c = $c.Replace('/downloads/php-sdk/deps', '/~windows/php-sdk/deps')
+            $c = $c.Replace(',/packages-(.+)-', ',/?packages-(.+)-')
+            Set-Content $cfg $c
           }
 
       - name: Build via official php-sdk 2.2.0 recipe
