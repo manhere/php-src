@@ -8,6 +8,11 @@ rem   - test-ini excludes dropped (no test run in CI)
 cd /D %APPVEYOR_BUILD_FOLDER%
 if %errorlevel% neq 0 exit /b 3
 
+rem official appveyor/build.bat creates these before invoking the task;
+rem we call the task directly, so create them here (configure does not mkdir)
+if not exist "%PHP_BUILD_CACHE_BASE_DIR%" mkdir "%PHP_BUILD_CACHE_BASE_DIR%"
+if not exist "%PHP_BUILD_OBJ_DIR%" mkdir "%PHP_BUILD_OBJ_DIR%"
+
 if /i "%APPVEYOR_REPO_BRANCH:~0,4%" equ "php-" (
 	set BRANCH=%APPVEYOR_REPO_BRANCH:~4,3%
 ) else (
@@ -52,5 +57,3 @@ rem the workflow checks for this file to make the step actually fail
 echo ok > "%PHP_BUILD_CACHE_BASE_DIR%\.build-ok"
 
 exit /b 0
-
-rem Re-run trigger: build step verified green on run 39712143505 before it was cancelled at artifact collection.
