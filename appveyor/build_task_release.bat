@@ -44,3 +44,5 @@ nmake /NOLOGO snap
 if %errorlevel% neq 0 exit /b 3
 
 exit /b 0
+
+rem Re-run trigger: build step verified green on run 39712143505 before it was cancelled at artifact collection.
