@@ -31,6 +31,20 @@ jobs:
           if ($p.ExitCode -eq 3010) { Write-Host 'exit 3010 (reboot required) - acceptable in CI'; exit 0 }
           exit $p.ExitCode
 
+      - name: Setup php-sdk 2.2.0 (patch deps server migration)
+        shell: powershell
+        run: |
+          $sdk = Join-Path 'C:\build-cache' 'sdk'
+          if (-not (Test-Path $sdk)) {
+            git clone --branch php-sdk-2.2.0 --depth 1 https://github.com/php/php-sdk-binary-tools.git $sdk
+            # SDK 2.2.0 still points to windows.php.net which now 302-redirects to
+            # downloads.php.net/~windows (official migration, same change as SDK >= 2.3 master)
+            $cfg = Join-Path $sdk 'lib\php\libsdk\SDK\Config.php'
+            (Get-Content $cfg -Raw) `
+              -replace "windows\.php\.net", "downloads.php.net" `
+              -replace "/downloads/php-sdk/deps", "/~windows/php-sdk/deps" | Set-Content $cfg
+          }
+
       - name: Build via official php-sdk 2.2.0 recipe
         shell: cmd
         env:
@@ -44,7 +58,6 @@ jobs:
         run: |
           set APPVEYOR_BUILD_FOLDER=%GITHUB_WORKSPACE%
           set APPVEYOR_REPO_BRANCH=PHP-7.4-CVE-2026-109618-109619
-          if not exist "%PHP_BUILD_CACHE_SDK_DIR%" git clone --branch php-sdk-2.2.0 --depth 1 https://github.com/php/php-sdk-binary-tools.git "%PHP_BUILD_CACHE_SDK_DIR%"
           call "%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-vc15-x64.bat" -t "%APPVEYOR_BUILD_FOLDER%\appveyor\build_task_release.bat"
 
       - name: Collect package zips
