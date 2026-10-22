@@ -49,6 +49,39 @@ jobs:
             Set-Content $cfg $c
           }
 
+      - name: Fetch PHP 7.4 deps (direct download, bypass phpsdk_deps)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deps = 'C:\build-cache\deps-7.4-vc15-x64'
+          New-Item -ItemType Directory -Force -Path $deps | Out-Null
+          $base = 'https://downloads.php.net/~windows/php-sdk/deps'
+          $tmp = Join-Path $env:RUNNER_TEMP 'depspkg'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $series = (Invoke-WebRequest -UseBasicParsing "$base/series/packages-7.4-vc15-x64-staging.txt").Content -split "`r?`n" |
+            ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          Write-Host "Packages to fetch: $($series.Count)"
+          foreach ($name in $series) {
+            $dest = Join-Path $tmp $name
+            if (Test-Path $dest) { continue }
+            $ok = $false
+            for ($i = 1; $i -le 5; $i++) {
+              try {
+                Invoke-WebRequest -UseBasicParsing "$base/vc15/x64/$name" -OutFile $dest
+                $ok = $true; break
+              } catch {
+                Write-Host "retry $i for ${name}: $($_.Exception.Message)"
+                Start-Sleep -Seconds (2 * $i)
+              }
+            }
+            if (-not $ok) { throw "Failed to download $name after 5 attempts" }
+          }
+          Get-ChildItem $tmp -Filter *.zip | ForEach-Object {
+            Expand-Archive -Path $_.FullName -DestinationPath $deps -Force
+          }
+          New-Item -ItemType File -Force -Path (Join-Path $deps '.deps-ready') | Out-Null
+          Write-Host "Deps ready in $deps"
+
       - name: Build via official php-sdk 2.2.0 recipe
         shell: cmd
         env:
@@ -62,14 +95,17 @@ jobs:
         run: |
           set APPVEYOR_BUILD_FOLDER=%GITHUB_WORKSPACE%
           set APPVEYOR_REPO_BRANCH=PHP-7.4-CVE-2026-109618-109619
+          if exist "C:\build-cache\.build-ok" del /f "C:\build-cache\.build-ok"
           call "%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-vc15-x64.bat" -t "%APPVEYOR_BUILD_FOLDER%\appveyor\build_task_release.bat"
+          rem the SDK starter swallows the task exit code - verify success marker
+          if not exist "C:\build-cache\.build-ok" exit /b 1
 
       - name: Collect package zips
         shell: powershell
         run: |
           $stage = Join-Path $env:RUNNER_TEMP 'artifacts'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Get-ChildItem -Path 'C:\obj', $env:GITHUB_WORKSPACE -Recurse -Filter *.zip -ErrorAction SilentlyContinue |
+          Get-ChildItem -Path 'C:\obj' -Recurse -Filter *.zip -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -match 'Win32-vc15-x64' } |
             Copy-Item -Destination $stage
           Get-ChildItem $stage | Format-Table Name, Length
